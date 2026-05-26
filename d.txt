@@ -1,0 +1,338 @@
+#include <iostream>
+#include <fstream>
+#include <vector>
+#include <string>
+#include <algorithm>
+#include <iomanip>
+
+using namespace std;
+
+struct St {
+    int id;
+    string name;
+    int grp_id;
+};
+struct Gr {
+    int id;
+    string name;
+};
+struct Sub {
+    int id;
+    string name;
+};
+struct Mark {
+    int id;
+    int st_id;
+    int sub_id;
+    int val;
+    int try_no;
+};
+struct DB {
+    vector<St> sts;
+    vector<Gr> grps;
+    vector<Sub> subs;
+    vector<Mark> marks;
+
+    int next_st_id = 1;
+    int next_gr_id = 1;
+    int next_sub_id = 1;
+    int next_mark_id = 1;
+};
+DB db;
+const string FILE_NAME = "data.bin";
+void write_str(ofstream& f, const string& s) {
+    size_t sz = s.size();
+    f.write((char*)&sz, sizeof(sz));
+    f.write(s.c_str(), sz);
+}
+string read_str(ifstream& f) {
+    size_t sz;
+    f.read((char*)&sz, sizeof(sz));
+    string s(sz, ' ');
+    f.read(&s[0], sz);
+    return s;
+}
+void save() {
+    ofstream f(FILE_NAME, ios::binary);
+    if (!f) return;
+
+    f.write((char*)&db.next_st_id, sizeof(int));
+    f.write((char*)&db.next_gr_id, sizeof(int));
+    f.write((char*)&db.next_sub_id, sizeof(int));
+    f.write((char*)&db.next_mark_id, sizeof(int));
+
+    size_t sz = db.grps.size();
+    f.write((char*)&sz, sizeof(sz));
+    for (auto& g : db.grps) {
+        f.write((char*)&g.id, sizeof(g.id));
+        write_str(f, g.name);
+    }
+
+    sz = db.sts.size();
+    f.write((char*)&sz, sizeof(sz));
+    for (auto& s : db.sts) {
+        f.write((char*)&s.id, sizeof(s.id));
+        f.write((char*)&s.grp_id, sizeof(s.grp_id));
+        write_str(f, s.name);
+    }
+
+    sz = db.subs.size();
+    f.write((char*)&sz, sizeof(sz));
+    for (auto& s : db.subs) {
+        f.write((char*)&s.id, sizeof(s.id));
+        write_str(f, s.name);
+    }
+
+    sz = db.marks.size();
+    f.write((char*)&sz, sizeof(sz));
+    for (auto& m : db.marks) {
+        f.write((char*)&m.id, sizeof(m.id));
+        f.write((char*)&m.st_id, sizeof(m.st_id));
+        f.write((char*)&m.sub_id, sizeof(m.sub_id));
+        f.write((char*)&m.val, sizeof(m.val));
+        f.write((char*)&m.try_no, sizeof(m.try_no));
+    }
+    f.close();
+}
+void load() {
+    ifstream f(FILE_NAME, ios::binary);
+    if (!f) return;
+    f.read((char*)&db.next_st_id, sizeof(int));
+    f.read((char*)&db.next_gr_id, sizeof(int));
+    f.read((char*)&db.next_sub_id, sizeof(int));
+    f.read((char*)&db.next_mark_id, sizeof(int));
+    size_t sz;
+    f.read((char*)&sz, sizeof(sz));
+    for (size_t i = 0; i < sz; i++) {
+        Gr g;
+        f.read((char*)&g.id, sizeof(g.id));
+        g.name = read_str(f);
+        db.grps.push_back(g);
+    }
+    f.read((char*)&sz, sizeof(sz));
+    for (size_t i = 0; i < sz; i++) {
+        St s;
+        f.read((char*)&s.id, sizeof(s.id));
+        f.read((char*)&s.grp_id, sizeof(s.grp_id));
+        s.name = read_str(f);
+        db.sts.push_back(s);
+    }
+
+    f.read((char*)&sz, sizeof(sz));
+    for (size_t i = 0; i < sz; i++) {
+        Sub s;
+        f.read((char*)&s.id, sizeof(s.id));
+        s.name = read_str(f);
+        db.subs.push_back(s);
+    }
+
+    f.read((char*)&sz, sizeof(sz));
+    for (size_t i = 0; i < sz; i++) {
+        Mark m;
+        f.read((char*)&m.id, sizeof(m.id));
+        f.read((char*)&m.st_id, sizeof(m.st_id));
+        f.read((char*)&m.sub_id, sizeof(m.sub_id));
+        f.read((char*)&m.val, sizeof(m.val));
+        f.read((char*)&m.try_no, sizeof(m.try_no));
+        db.marks.push_back(m);
+    }
+    f.close();
+}
+template<typename T>
+T* find(vector<T>& items, int id) {
+    for (auto& it : items)
+        if (it.id == id) return &it;
+    return nullptr;
+}
+string grp_name(int id) {
+    if (id == 0) return "Нет";
+    Gr* g = find(db.grps, id);
+    return g ? g->name : "???";
+}
+
+string sub_name(int id) {
+    Sub* s = find(db.subs, id);
+    return s ? s->name : "???";
+}
+
+string st_name(int id) {
+    St* s = find(db.sts, id);
+    return s ? s->name : "???";
+}
+
+int next_try(int st_id, int sub_id) {
+    int max_try = 0;
+    for (auto& m : db.marks)
+        if (m.st_id == st_id && m.sub_id == sub_id)
+            max_try = max(max_try, m.try_no);
+    return max_try + 1;
+}
+
+double avg_st(int st_id) {
+    int sum = 0, cnt = 0;
+    for (auto& m : db.marks)
+        if (m.st_id == st_id) {
+            sum += m.val;
+            cnt++;
+        }
+    return cnt ? (double)sum / cnt : 0;
+}
+
+void group_add() {
+    Gr g;
+    g.id = db.next_gr_id++;
+    cin.ignore();
+    cout << "Название группы: ";
+    getline(cin, g.name);
+    db.grps.push_back(g);
+    save();
+    cout << "✓ Группа добавлена\n";
+}
+
+void groups_show() {
+    cout << "\n+-----------------------------+\n";
+    cout << "|          ГРУППЫ             |\n";
+    cout << "+-----------------------------+\n";
+    cout << "| ID | Название               |\n";
+    cout << "+-----------------------------+\n";
+    for (auto& g : db.grps) {
+        cout << "| " << setw(2) << g.id << " | " << setw(22) << left << g.name << "|\n";
+    }
+    cout << "+-----------------------------+\n";
+}
+void sub_add() {
+    Sub s;
+    s.id = db.next_sub_id++;
+    cin.ignore();
+    cout << "Название предмета: ";
+    getline(cin, s.name);
+    db.subs.push_back(s);
+    save();
+    cout << "✓ Предмет добавлен\n";
+}
+
+void subs_show() {
+    cout << "\n+-----------------------------+\n";
+    cout << "|         ПРЕДМЕТЫ            |\n";
+    cout << "+-----------------------------+\n";
+    cout << "| ID | Название               |\n";
+    cout << "+-----------------------------+\n";
+    for (auto& s : db.subs) {
+        cout << "| " << setw(2) << s.id << " | " << setw(22) << left << s.name << "|\n";
+    }
+    cout << "+-----------------------------+\n";
+}
+void st_add() {
+    St s;
+    s.id = db.next_st_id++;
+    cin.ignore();
+    cout << "ФИО: ";
+    getline(cin, s.name);
+    groups_show();
+    cout << "ID группы (0 - нет): ";
+    cin >> s.grp_id;
+    db.sts.push_back(s);
+    save();
+    cout << "✓ Студент добавлен\n";
+}
+
+void sts_show() {
+    cout << "\n+----------------------------------------------------------------------+\n";
+    cout << "|                          СТУДЕНТЫ                                   |\n";
+    cout << "+----------------------------------------------------------------------+\n";
+    cout << "| ID | ФИО                         | Группа          | Ср. балл       |\n";
+    cout << "+----------------------------------------------------------------------+\n";
+    for (auto& s : db.sts) {
+        cout << "| " << setw(2) << s.id << " | " << setw(26) << left << s.name
+            << " | " << setw(14) << left << grp_name(s.grp_id)
+            << " | " << fixed << setprecision(2) << setw(12) << left << avg_st(s.id) << " |\n";
+    }
+    cout << "+----------------------------------------------------------------------+\n";
+}
+void st_del() {
+    sts_show();
+    int id;
+    cout << "ID студента для удаления: ";
+    cin >> id;
+    db.sts.erase(remove_if(db.sts.begin(), db.sts.end(),
+        [id](St& s) { return s.id == id; }), db.sts.end());
+    db.marks.erase(remove_if(db.marks.begin(), db.marks.end(),
+        [id](Mark& m) { return m.st_id == id; }), db.marks.end());
+    save();
+    cout << "✓ Студент удалён\n";
+}
+void mark_add() {
+    if (db.sts.empty()) { cout << "! Нет студентов\n"; return; }
+    if (db.subs.empty()) { cout << "! Нет предметов\n"; return; }
+
+    sts_show();
+    Mark m;
+    m.id = db.next_mark_id++;
+    cout << "ID студента: ";
+    cin >> m.st_id;
+    subs_show();
+    cout << "ID предмета: ";
+    cin >> m.sub_id;
+    cout << "Оценка (1-5): ";
+    cin >> m.val;
+    m.try_no = next_try(m.st_id, m.sub_id);
+    db.marks.push_back(m);
+    save();
+    cout << "✓ Оценка добавлена\n";
+}
+
+void marks_show() {
+    cout << "\n+----------------------------------------------------------------------+\n";
+    cout << "|                           ОЦЕНКИ                                    |\n";
+    cout << "+----------------------------------------------------------------------+\n";
+    cout << "| ID | Студент                   | Предмет                 | Оц | Поп |\n";
+    cout << "+----------------------------------------------------------------------+\n";
+    for (auto& m : db.marks) {
+        cout << "| " << setw(2) << m.id << " | " << setw(23) << left << st_name(m.st_id)
+            << " | " << setw(22) << left << sub_name(m.sub_id)
+            << " | " << setw(2) << m.val << " | " << setw(3) << m.try_no << " |\n";
+    }
+    cout << "+----------------------------------------------------------------------+\n";
+}
+void menu() {
+    while (true) {
+        cout << "\n______________________________________|\n";
+        cout << "|             ГЛАВНОЕ МЕНЮ              |\n";
+        cout << "|______________________________________|\n";
+        cout << "| 1. Добавить группу                   |\n";
+        cout << "| 2. Показать группы                   |\n";
+        cout << "| 3. Добавить предмет                  |\n";
+        cout << "| 4. Показать предметы                 |\n";
+        cout << "| 5. Добавить студента                 |\n";
+        cout << "| 6. Показать студентов                |\n";
+        cout << "| 7. Удалить студента                  |\n";
+        cout << "| 8. Добавить оценку                   |\n";
+        cout << "| 9. Показать оценки                   |\n";
+        cout << "| 0. Выход                             |\n";
+        cout << "|______________________________________|\n";
+
+        int ch;
+        cout << "> ";
+        cin >> ch;
+
+        switch (ch) {
+        case 1: group_add(); break;
+        case 2: groups_show(); break;
+        case 3: sub_add(); break;
+        case 4: subs_show(); break;
+        case 5: st_add(); break;
+        case 6: sts_show(); break;
+        case 7: st_del(); break;
+        case 8: mark_add(); break;
+        case 9: marks_show(); break;
+        case 0: return;
+        default: cout << "! Неверный выбор\n";
+        }
+    }
+}
+int main() {
+    setlocale(LC_ALL, "Russian");
+    load();
+    menu();
+    return 0;
+}
