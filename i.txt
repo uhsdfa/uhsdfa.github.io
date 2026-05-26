@@ -1,0 +1,636 @@
+#include <iostream>
+#include <fstream>
+#include <vector>
+#include <string>
+#include <algorithm>
+#include <iomanip>
+
+using namespace std;
+
+struct Student {
+    int id;
+    string name;
+    int group_id;
+};
+
+struct Group {
+    int id;
+    string name;
+};
+
+struct Subject {
+    int id;
+    string name;
+};
+
+struct Grade {
+    int id;
+    int student_id;
+    int subject_id;
+    int value;
+    int attempt;
+};
+
+struct DataStore {
+    vector<Student> students;
+    vector<Group> groups;
+    vector<Subject> subjects;
+    vector<Grade> grades;
+
+    int next_student_id = 1;
+    int next_group_id = 1;
+    int next_subject_id = 1;
+    int next_grade_id = 1;
+};
+
+DataStore db;
+
+const string FILE_NAME = "data.bin";
+
+
+
+// ===================== BINARY SAVE =====================
+
+void write_string(ofstream& file, const string& str) {
+    size_t size = str.size();
+
+    file.write((char*)&size, sizeof(size));
+    file.write(str.c_str(), size);
+}
+
+string read_string(ifstream& file) {
+    size_t size;
+
+    file.read((char*)&size, sizeof(size));
+
+    string str(size, ' ');
+
+    file.read(&str[0], size);
+
+    return str;
+}
+
+void save_data() {
+    ofstream file(FILE_NAME, ios::binary);
+
+    if (!file)
+        return;
+
+    // IDs
+    file.write((char*)&db.next_student_id, sizeof(int));
+    file.write((char*)&db.next_group_id, sizeof(int));
+    file.write((char*)&db.next_subject_id, sizeof(int));
+    file.write((char*)&db.next_grade_id, sizeof(int));
+
+    // GROUPS
+    size_t groups_size = db.groups.size();
+    file.write((char*)&groups_size, sizeof(groups_size));
+
+    for (auto& g : db.groups) {
+        file.write((char*)&g.id, sizeof(g.id));
+        write_string(file, g.name);
+    }
+
+    // STUDENTS
+    size_t students_size = db.students.size();
+    file.write((char*)&students_size, sizeof(students_size));
+
+    for (auto& s : db.students) {
+        file.write((char*)&s.id, sizeof(s.id));
+        file.write((char*)&s.group_id, sizeof(s.group_id));
+
+        write_string(file, s.name);
+    }
+
+    // SUBJECTS
+    size_t subjects_size = db.subjects.size();
+    file.write((char*)&subjects_size, sizeof(subjects_size));
+
+    for (auto& s : db.subjects) {
+        file.write((char*)&s.id, sizeof(s.id));
+
+        write_string(file, s.name);
+    }
+
+    // GRADES
+    size_t grades_size = db.grades.size();
+    file.write((char*)&grades_size, sizeof(grades_size));
+
+    for (auto& g : db.grades) {
+        file.write((char*)&g.id, sizeof(g.id));
+        file.write((char*)&g.student_id, sizeof(g.student_id));
+        file.write((char*)&g.subject_id, sizeof(g.subject_id));
+        file.write((char*)&g.value, sizeof(g.value));
+        file.write((char*)&g.attempt, sizeof(g.attempt));
+    }
+
+    file.close();
+}
+
+void load_data() {
+    ifstream file(FILE_NAME, ios::binary);
+
+    if (!file)
+        return;
+
+    // IDs
+    file.read((char*)&db.next_student_id, sizeof(int));
+    file.read((char*)&db.next_group_id, sizeof(int));
+    file.read((char*)&db.next_subject_id, sizeof(int));
+    file.read((char*)&db.next_grade_id, sizeof(int));
+
+    // GROUPS
+    size_t groups_size;
+
+    file.read((char*)&groups_size, sizeof(groups_size));
+
+    for (size_t i = 0; i < groups_size; i++) {
+        Group g;
+
+        file.read((char*)&g.id, sizeof(g.id));
+
+        g.name = read_string(file);
+
+        db.groups.push_back(g);
+    }
+
+    // STUDENTS
+    size_t students_size;
+
+    file.read((char*)&students_size, sizeof(students_size));
+
+    for (size_t i = 0; i < students_size; i++) {
+        Student s;
+
+        file.read((char*)&s.id, sizeof(s.id));
+        file.read((char*)&s.group_id, sizeof(s.group_id));
+
+        s.name = read_string(file);
+
+        db.students.push_back(s);
+    }
+
+    // SUBJECTS
+    size_t subjects_size;
+
+    file.read((char*)&subjects_size, sizeof(subjects_size));
+
+    for (size_t i = 0; i < subjects_size; i++) {
+        Subject s;
+
+        file.read((char*)&s.id, sizeof(s.id));
+
+        s.name = read_string(file);
+
+        db.subjects.push_back(s);
+    }
+
+    // GRADES
+    size_t grades_size;
+
+    file.read((char*)&grades_size, sizeof(grades_size));
+
+    for (size_t i = 0; i < grades_size; i++) {
+        Grade g;
+
+        file.read((char*)&g.id, sizeof(g.id));
+        file.read((char*)&g.student_id, sizeof(g.student_id));
+        file.read((char*)&g.subject_id, sizeof(g.subject_id));
+        file.read((char*)&g.value, sizeof(g.value));
+        file.read((char*)&g.attempt, sizeof(g.attempt));
+
+        db.grades.push_back(g);
+    }
+
+    file.close();
+}
+
+
+
+// ===================== FIND =====================
+
+template<typename T>
+T* find_by_id(vector<T>& items, int id) {
+    for (auto& item : items) {
+        if (item.id == id)
+            return &item;
+    }
+
+    return nullptr;
+}
+
+
+
+// ===================== HELPERS =====================
+
+string group_name(int id) {
+    if (id == 0)
+        return "Нет";
+
+    Group* g = find_by_id(db.groups, id);
+
+    if (!g)
+        return "???";
+
+    return g->name;
+}
+
+string subject_name(int id) {
+    Subject* s = find_by_id(db.subjects, id);
+
+    if (!s)
+        return "???";
+
+    return s->name;
+}
+
+string student_name(int id) {
+    Student* s = find_by_id(db.students, id);
+
+    if (!s)
+        return "???";
+
+    return s->name;
+}
+
+int next_attempt(int student_id, int subject_id) {
+    int max_attempt = 0;
+
+    for (auto& g : db.grades) {
+        if (g.student_id == student_id &&
+            g.subject_id == subject_id) {
+
+            max_attempt = max(max_attempt, g.attempt);
+        }
+    }
+
+    return max_attempt + 1;
+}
+
+double average_student(int student_id) {
+    int sum = 0;
+    int count = 0;
+
+    for (auto& g : db.grades) {
+        if (g.student_id == student_id) {
+            sum += g.value;
+            count++;
+        }
+    }
+
+    if (count == 0)
+        return 0;
+
+    return (double)sum / count;
+}
+
+
+
+// ===================== GROUPS =====================
+
+void add_group() {
+    Group g;
+
+    g.id = db.next_group_id++;
+
+    cin.ignore();
+
+    cout << "Название группы: ";
+    getline(cin, g.name);
+
+    db.groups.push_back(g);
+
+    save_data();
+
+    cout << "Группа добавлена\n";
+}
+
+void show_groups() {
+    cout << "\n=== ГРУППЫ ===\n";
+
+    for (auto& g : db.groups) {
+        cout << g.id
+             << " | "
+             << g.name
+             << endl;
+    }
+}
+
+
+
+// ===================== SUBJECTS =====================
+
+void add_subject() {
+    Subject s;
+
+    s.id = db.next_subject_id++;
+
+    cin.ignore();
+
+    cout << "Название предмета: ";
+    getline(cin, s.name);
+
+    db.subjects.push_back(s);
+
+    save_data();
+
+    cout << "Предмет добавлен\n";
+}
+
+void show_subjects() {
+    cout << "\n=== ПРЕДМЕТЫ ===\n";
+
+    for (auto& s : db.subjects) {
+        cout << s.id
+             << " | "
+             << s.name
+             << endl;
+    }
+}
+
+
+
+// ===================== STUDENTS =====================
+
+void add_student() {
+    Student s;
+
+    s.id = db.next_student_id++;
+
+    cin.ignore();
+
+    cout << "ФИО: ";
+    getline(cin, s.name);
+
+    show_groups();
+
+    cout << "ID группы (0 - нет): ";
+    cin >> s.group_id;
+
+    db.students.push_back(s);
+
+    save_data();
+
+    cout << "Студент добавлен\n";
+}
+
+void show_students() {
+    cout << "\n=== СТУДЕНТЫ ===\n";
+
+    for (auto& s : db.students) {
+        cout << s.id
+             << " | "
+             << s.name
+             << " | Группа: "
+             << group_name(s.group_id)
+             << " | Ср. балл: "
+             << fixed
+             << setprecision(2)
+             << average_student(s.id)
+             << endl;
+    }
+}
+
+void delete_student() {
+    show_students();
+
+    int id;
+
+    cout << "ID студента: ";
+    cin >> id;
+
+    db.students.erase(
+        remove_if(
+            db.students.begin(),
+            db.students.end(),
+            [id](Student& s) {
+                return s.id == id;
+            }
+        ),
+        db.students.end()
+    );
+
+    db.grades.erase(
+        remove_if(
+            db.grades.begin(),
+            db.grades.end(),
+            [id](Grade& g) {
+                return g.student_id == id;
+            }
+        ),
+        db.grades.end()
+    );
+
+    save_data();
+
+    cout << "Студент удален\n";
+}
+
+
+
+// ===================== GRADES =====================
+
+void add_grade() {
+    if (db.students.empty()) {
+        cout << "Нет студентов\n";
+        return;
+    }
+
+    if (db.subjects.empty()) {
+        cout << "Нет предметов\n";
+        return;
+    }
+
+    show_students();
+
+    Grade g;
+
+    g.id = db.next_grade_id++;
+
+    cout << "ID студента: ";
+    cin >> g.student_id;
+
+    show_subjects();
+
+    cout << "ID предмета: ";
+    cin >> g.subject_id;
+
+    cout << "Оценка (1-5): ";
+    cin >> g.value;
+
+    g.attempt = next_attempt(
+        g.student_id,
+        g.subject_id
+    );
+
+    db.grades.push_back(g);
+
+    save_data();
+
+    cout << "Оценка добавлена\n";
+}
+
+void show_grades() {
+    cout << "\n=== ОЦЕНКИ ===\n";
+
+    for (auto& g : db.grades) {
+        cout << g.id
+             << " | "
+             << student_name(g.student_id)
+             << " | "
+             << subject_name(g.subject_id)
+             << " | "
+             << g.value
+             << " | Попытка "
+             << g.attempt
+             << endl;
+    }
+}
+
+
+
+// ===================== REPORTS =====================
+
+void top_students() {
+    vector<pair<string, double>> top;
+
+    for (auto& s : db.students) {
+        top.push_back({
+            s.name,
+            average_student(s.id)
+        });
+    }
+
+    sort(
+        top.begin(),
+        top.end(),
+        [](auto& a, auto& b) {
+            return a.second > b.second;
+        }
+    );
+
+    cout << "\n=== ТОП СТУДЕНТОВ ===\n";
+
+    for (auto& t : top) {
+        cout << t.first
+             << " | "
+             << fixed
+             << setprecision(2)
+             << t.second
+             << endl;
+    }
+}
+
+void retakes() {
+    cout << "\n=== ПЕРЕСДАЧИ ===\n";
+
+    for (auto& g : db.grades) {
+        if (g.value < 3) {
+            cout << student_name(g.student_id)
+                 << " | "
+                 << subject_name(g.subject_id)
+                 << " | "
+                 << g.value
+                 << endl;
+        }
+    }
+}
+
+
+
+// ===================== MENU =====================
+
+void menu() {
+    while (true) {
+        cout << "\n========= МЕНЮ =========\n";
+
+        cout << "1. Добавить группу\n";
+        cout << "2. Показать группы\n";
+
+        cout << "3. Добавить предмет\n";
+        cout << "4. Показать предметы\n";
+
+        cout << "5. Добавить студента\n";
+        cout << "6. Показать студентов\n";
+        cout << "7. Удалить студента\n";
+
+        cout << "8. Добавить оценку\n";
+        cout << "9. Показать оценки\n";
+
+        cout << "10. Топ студентов\n";
+        cout << "11. Пересдачи\n";
+
+        cout << "0. Выход\n";
+
+        int choice;
+
+        cout << "> ";
+        cin >> choice;
+
+        switch (choice) {
+            case 1:
+                add_group();
+                break;
+
+            case 2:
+                show_groups();
+                break;
+
+            case 3:
+                add_subject();
+                break;
+
+            case 4:
+                show_subjects();
+                break;
+
+            case 5:
+                add_student();
+                break;
+
+            case 6:
+                show_students();
+                break;
+
+            case 7:
+                delete_student();
+                break;
+
+            case 8:
+                add_grade();
+                break;
+
+            case 9:
+                show_grades();
+                break;
+
+            case 10:
+                top_students();
+                break;
+
+            case 11:
+                retakes();
+                break;
+
+            case 0:
+                return;
+
+            default:
+                cout << "Ошибка\n";
+        }
+    }
+}
+
+
+
+// ===================== MAIN =====================
+
+int main() {
+    setlocale(LC_ALL, "Russian");
+
+    load_data();
+
+    menu();
+
+    return 0;
+}
